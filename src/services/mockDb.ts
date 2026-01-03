@@ -1,346 +1,325 @@
 import { User, Role, EmployeeProfile, Attendance, AttendanceStatus, LeaveRequest, LeaveStatus, LeaveType, SalaryStructure } from '../types';
 
-// --- LOCAL STORAGE HELPERS (Internal Database) ---
-const STORAGE_KEYS = {
-  USERS: 'dayflow_users',
-  PROFILES: 'dayflow_profiles',
-  SALARIES: 'dayflow_salaries',
-  LEAVES: 'dayflow_leaves',
-  ATTENDANCE: 'dayflow_attendance',
-  COMPANY: 'dayflow_company'
+const API_Base = 'http://localhost:5000/api';
+
+// --- HELPER FUNCTIONS ---
+const getAuthHeaders = () => {
+  const token = localStorage.getItem('accessToken');
+  return token ? { 'Authorization': `Bearer ${token}` } : {};
 };
 
-const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-const loadData = <T,>(key: string, defaultData: T): T => {
-  const stored = localStorage.getItem(key);
-  if (stored) return JSON.parse(stored);
-  localStorage.setItem(key, JSON.stringify(defaultData));
-  return defaultData;
-};
-
-const saveData = (key: string, data: any) => {
-  localStorage.setItem(key, JSON.stringify(data));
-};
-
-// --- INITIAL MOCK DATA ---
-const MOCK_USERS: User[] = [
-  {
-    id: 'u1',
-    employeeId: 'OIALAD20220001',
-    email: 'admin@dayflow.com',
-    role: Role.ADMIN,
-    firstName: 'Alice',
-    lastName: 'Admin',
-    joiningDate: '2022-01-01',
-    profilePictureUrl: 'https://i.pravatar.cc/150?u=u1',
-    passwordHash: 'admin123'
-  },
-  {
-    id: 'u2',
-    employeeId: 'OIJODO20230001',
-    email: 'john@dayflow.com',
-    role: Role.EMPLOYEE,
-    firstName: 'John',
-    lastName: 'Doe',
-    joiningDate: '2023-03-15',
-    profilePictureUrl: 'https://i.pravatar.cc/150?u=u2',
-    passwordHash: 'user123'
+const handleResponse = async (response: Response) => {
+  if (response.status === 401) {
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('currentUserId');
+    // window.location.href = '/login'; // Optional: Redirect to login
+    throw new Error('Unauthorized');
   }
-];
-
-const MOCK_PROFILES: EmployeeProfile[] = [
-  {
-    userId: 'u1', address: '123 Admin St', phone: '9876543210', jobPosition: 'HR Manager', department: 'Human Resources',
-    bankAccountNo: '123456789', ifsc: 'HDFC0001', pan: 'ABCDE1234F', uan: '100000001', maritalStatus: 'Single', nationality: 'Indian'
-  },
-  {
-    userId: 'u2', address: '456 User Ln', phone: '9876543211', jobPosition: 'Software Engineer', department: 'Engineering', managerId: 'u1',
-    bankAccountNo: '987654321', ifsc: 'SBIN0001', pan: 'FGHIJ5678K', uan: '100000002', maritalStatus: 'Married', nationality: 'Indian'
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || 'API request failed');
   }
-];
-
-const MOCK_SALARIES: SalaryStructure[] = MOCK_USERS.map(u => ({
-    userId: u.id,
-    totalWage: u.role === Role.ADMIN ? 80000 : 50000,
-    yearlyWage: (u.role === Role.ADMIN ? 80000 : 50000) * 12,
-    workingDaysPerWeek: 5,
-    basic: (u.role === Role.ADMIN ? 80000 : 50000) * 0.5,
-    hra: ((u.role === Role.ADMIN ? 80000 : 50000) * 0.5) * 0.5,
-    standardAllowance: 2000,
-    performanceBonus: 0,
-    travelAllowance: 1500,
-    fixedAllowance: 0, // Simplified
-    pfEmployee: 1800,
-    pfEmployer: 1800,
-    profTax: 200
-}));
-
-// --- BUSINESS LOGIC HELPERS ---
-const generateEmployeeId = (firstName: string, lastName: string, joiningDate: string): string => {
-  const companyTag = 'OI';
-  const f2 = firstName.substring(0, 2).toUpperCase();
-  const l2 = lastName.substring(0, 2).toUpperCase();
-  const year = new Date(joiningDate).getFullYear();
-  
-  const users = loadData(STORAGE_KEYS.USERS, MOCK_USERS);
-  const count = users.filter((u: User) => u.joiningDate.startsWith(year.toString())).length + 1;
-  const serial = count.toString().padStart(4, '0');
-  
-  return `${companyTag}${f2}${l2}${year}${serial}`;
+  return response.json();
 };
 
-// --- ASYNC API CLIENT ---
-// This mocks a real backend. All methods return Promises.
+const mapUser = (data: any): User => ({
+  id: data.id,
+  employeeId: data.employee_id,
+  email: data.email,
+  role: data.role as Role,
+  firstName: data.first_name,
+  lastName: data.last_name,
+  joiningDate: data.joining_date ? data.joining_date.split('T')[0] : '', // Handle date format
+  profilePictureUrl: data.profile_picture_url,
+  passwordHash: '' // Security: Don't expose hash
+});
+
+const mapProfile = (data: any): EmployeeProfile => ({
+  userId: data.user_id,
+  address: data.address,
+  phone: data.phone,
+  jobPosition: data.job_position,
+  department: data.department,
+  managerId: data.manager_id,
+  bankAccountNo: data.bank_account_no,
+  ifsc: data.ifsc,
+  pan: data.pan,
+  uan: data.uan,
+  maritalStatus: data.marital_status,
+  nationality: data.nationality,
+  personalEmail: data.email, // Using main email as personal for now if not separate
+  gender: '' // Not in DB
+});
+
+const mapAttendance = (data: any): Attendance => ({
+  id: data.id,
+  userId: data.user_id,
+  date: data.date ? data.date.split('T')[0] : '',
+  checkInTime: data.check_in_time,
+  checkOutTime: data.check_out_time,
+  workHours: data.work_hours ? parseFloat(data.work_hours) : 0,
+  status: data.status as AttendanceStatus,
+  extraHours: data.extra_hours ? parseFloat(data.extra_hours) : 0
+});
+
+const mapLeave = (data: any): LeaveRequest => ({
+  id: data.id,
+  userId: data.user_id,
+  type: data.leave_type as LeaveType,
+  startDate: data.start_date ? data.start_date.split('T')[0] : '',
+  endDate: data.end_date ? data.end_date.split('T')[0] : '',
+  status: data.status as LeaveStatus,
+  reason: data.reason,
+  approverId: data.approver_id,
+  approvalDate: data.approval_date
+});
+
+const mapSalary = (data: any): SalaryStructure => ({
+  userId: data.user_id,
+  totalWage: parseFloat(data.total_wage),
+  yearlyWage: parseFloat(data.yearly_wage),
+  workingDaysPerWeek: data.working_days_per_week,
+  basic: parseFloat(data.basic),
+  hra: parseFloat(data.hra),
+  standardAllowance: parseFloat(data.standard_allowance),
+  performanceBonus: parseFloat(data.performance_bonus),
+  travelAllowance: parseFloat(data.travel_allowance),
+  fixedAllowance: parseFloat(data.fixed_allowance),
+  pfEmployee: parseFloat(data.pf_employee),
+  pfEmployer: parseFloat(data.pf_employer),
+  profTax: parseFloat(data.prof_tax)
+});
+
+// --- API CLIENT ---
 
 export const api = {
   auth: {
     login: async (email: string, pass: string): Promise<User | null> => {
-      await delay(500);
-      const users = loadData(STORAGE_KEYS.USERS, MOCK_USERS);
-      const user = users.find((u: User) => (u.email === email || u.employeeId === email) && u.passwordHash === pass);
-      return user || null;
+      try {
+        const res = await fetch(`${API_Base}/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password: pass }),
+        });
+        if (!res.ok) {
+          if (res.status === 401) return null;
+          throw new Error('Login failed');
+        }
+        const data = await res.json();
+        // Store Token
+        if (data.accessToken) {
+          localStorage.setItem('accessToken', data.accessToken);
+        }
+        return mapUser(data);
+      } catch (e) {
+        console.error("Login Error", e);
+        return null;
+      }
     },
-    
-    signup: async (companyName: string, adminData: Partial<User>, phone: string): Promise<User> => {
-      await delay(800);
-      const users = loadData(STORAGE_KEYS.USERS, MOCK_USERS);
-      const profiles = loadData(STORAGE_KEYS.PROFILES, MOCK_PROFILES);
-      const salaries = loadData(STORAGE_KEYS.SALARIES, MOCK_SALARIES);
 
-      // Save Company Info (Mock)
-      saveData(STORAGE_KEYS.COMPANY, { name: companyName });
+    signup: async (companyName: string, adminData: any, phone: string, file?: File): Promise<User> => {
+      const formData = new FormData();
+      formData.append('companyName', companyName);
+      formData.append('adminData', JSON.stringify(adminData));
+      formData.append('phone', phone);
+      if (file) {
+        formData.append('profilePicture', file);
+      }
 
-      const newId = `u${Date.now()}`;
-      const joiningDate = new Date().toISOString().split('T')[0];
-      const employeeId = generateEmployeeId(adminData.firstName!, adminData.lastName!, joiningDate);
+      const res = await fetch(`${API_Base}/auth/signup`, {
+        method: 'POST',
+        // headers: { 'Content-Type': 'multipart/form-data' }, // Browser sets this automatically with boundary
+        body: formData,
+      });
+      const data = await handleResponse(res);
+      // Store Token
+      if (data.accessToken) {
+        localStorage.setItem('accessToken', data.accessToken);
+      }
+      return mapUser(data);
+    },
 
-      const newUser: User = {
-        id: newId,
-        employeeId,
-        email: adminData.email!,
-        passwordHash: adminData.passwordHash!,
-        firstName: adminData.firstName!,
-        lastName: adminData.lastName!,
-        role: Role.ADMIN,
-        joiningDate,
-        profilePictureUrl: `https://i.pravatar.cc/150?u=${newId}`,
-      };
-
-      const newProfile: EmployeeProfile = {
-        userId: newId,
-        address: '', phone: phone, jobPosition: 'Admin', department: 'Management',
-        bankAccountNo: '', ifsc: '', pan: '', uan: ''
-      };
-
-      // Basic Salary Structure
-      const newSalary: SalaryStructure = {
-         userId: newId, totalWage: 0, yearlyWage: 0, workingDaysPerWeek: 5,
-         basic: 0, hra: 0, standardAllowance: 0, performanceBonus: 0,
-         travelAllowance: 0, fixedAllowance: 0, pfEmployee: 0, pfEmployer: 0, profTax: 0
-      };
-
-      users.push(newUser);
-      profiles.push(newProfile);
-      salaries.push(newSalary);
-
-      saveData(STORAGE_KEYS.USERS, users);
-      saveData(STORAGE_KEYS.PROFILES, profiles);
-      saveData(STORAGE_KEYS.SALARIES, salaries);
-
-      return newUser;
+    resetPassword: async (userId: string, newPass: string): Promise<void> => {
+      const res = await fetch(`${API_Base}/auth/reset-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ userId, newPass })
+      });
+      await handleResponse(res);
     }
   },
 
   users: {
     getAll: async (): Promise<User[]> => {
-      await delay(300);
-      return loadData(STORAGE_KEYS.USERS, MOCK_USERS);
+      const res = await fetch(`${API_Base}/users`, {
+        headers: getAuthHeaders()
+      });
+      const data = await handleResponse(res);
+      return data.map(mapUser);
     },
     getById: async (id: string): Promise<User | undefined> => {
-      await delay(200);
-      const users = loadData(STORAGE_KEYS.USERS, MOCK_USERS);
-      return users.find((u: User) => u.id === id);
+      const res = await fetch(`${API_Base}/users/${id}`, {
+        headers: getAuthHeaders()
+      });
+      if (res.status === 404) return undefined;
+      const data = await handleResponse(res);
+      return mapUser(data);
     },
     create: async (userData: Partial<User>, profileData: Partial<EmployeeProfile>): Promise<User> => {
-      await delay(600);
-      const users = loadData(STORAGE_KEYS.USERS, MOCK_USERS);
-      const profiles = loadData(STORAGE_KEYS.PROFILES, MOCK_PROFILES);
-      const salaries = loadData(STORAGE_KEYS.SALARIES, MOCK_SALARIES);
+      const res = await fetch(`${API_Base}/users`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ userData, profileData }),
+      });
+      const data = await handleResponse(res);
+      return mapUser(data);
+    },
 
-      const newId = `u${Date.now()}`;
-      const employeeId = generateEmployeeId(userData.firstName!, userData.lastName!, userData.joiningDate!);
-      
-      const newUser: User = {
-        id: newId,
-        employeeId,
-        passwordHash: 'user123', // Default
-        role: Role.EMPLOYEE,
-        email: userData.email!,
-        firstName: userData.firstName!,
-        lastName: userData.lastName!,
-        joiningDate: userData.joiningDate!,
-        profilePictureUrl: `https://i.pravatar.cc/150?u=${newId}`,
-        ...userData
-      } as User;
+    update: async (id: string, data: any, file?: File): Promise<void> => {
+      let body;
+      let headers: any = getAuthHeaders();
 
-      const newProfile: EmployeeProfile = {
-        userId: newId,
-        address: '', phone: '', jobPosition: 'Employee', department: 'General',
-        bankAccountNo: '', ifsc: '', pan: '', uan: '',
-        ...profileData
-      } as EmployeeProfile;
+      if (file) {
+        const formData = new FormData();
+        Object.keys(data).forEach(key => formData.append(key, data[key]));
+        formData.append('profilePicture', file);
+        body = formData;
+        // Content-Type header not set for FormData
+      } else {
+        body = JSON.stringify(data);
+        headers['Content-Type'] = 'application/json';
+      }
 
-      const newSalary: SalaryStructure = {
-         userId: newId, totalWage: 0, yearlyWage: 0, workingDaysPerWeek: 5,
-         basic: 0, hra: 0, standardAllowance: 0, performanceBonus: 0,
-         travelAllowance: 0, fixedAllowance: 0, pfEmployee: 0, pfEmployer: 0, profTax: 0
-      };
+      const res = await fetch(`${API_Base}/users/${id}`, {
+        method: 'PUT',
+        headers,
+        body
+      });
+      await handleResponse(res);
+    },
 
-      users.push(newUser);
-      profiles.push(newProfile);
-      salaries.push(newSalary);
-
-      saveData(STORAGE_KEYS.USERS, users);
-      saveData(STORAGE_KEYS.PROFILES, profiles);
-      saveData(STORAGE_KEYS.SALARIES, salaries);
-
-      return newUser;
+    delete: async (id: string): Promise<void> => {
+      const res = await fetch(`${API_Base}/users/${id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      });
+      await handleResponse(res);
     }
   },
 
   profiles: {
     getAll: async (): Promise<EmployeeProfile[]> => {
-      await delay(300);
-      return loadData(STORAGE_KEYS.PROFILES, MOCK_PROFILES);
+      const res = await fetch(`${API_Base}/users`, {
+        headers: getAuthHeaders()
+      });
+      const data = await handleResponse(res);
+      return data.map(mapProfile);
     },
     getByUserId: async (userId: string): Promise<EmployeeProfile | undefined> => {
-      await delay(200);
-      const profiles = loadData(STORAGE_KEYS.PROFILES, MOCK_PROFILES);
-      return profiles.find((p: EmployeeProfile) => p.userId === userId);
+      const res = await fetch(`${API_Base}/users/${userId}`, {
+        headers: getAuthHeaders()
+      });
+      if (!res.ok) return undefined;
+      const data = await res.json();
+      return mapProfile(data);
     }
   },
 
   attendance: {
     getAll: async (): Promise<Attendance[]> => {
-      await delay(300);
-      return loadData(STORAGE_KEYS.ATTENDANCE, []);
+      const res = await fetch(`${API_Base}/attendance`, {
+        headers: getAuthHeaders()
+      });
+      const data = await handleResponse(res);
+      return data.map(mapAttendance);
     },
     checkIn: async (userId: string): Promise<void> => {
-      await delay(400);
-      const attendance = loadData(STORAGE_KEYS.ATTENDANCE, []);
-      const today = new Date().toISOString().split('T')[0];
-      
-      if (!attendance.find((a: Attendance) => a.userId === userId && a.date === today)) {
-        attendance.push({
-          id: `a${Date.now()}`,
-          userId,
-          date: today,
-          checkInTime: new Date().toISOString(),
-          status: AttendanceStatus.PRESENT,
-          workHours: 0,
-          extraHours: 0
-        });
-        saveData(STORAGE_KEYS.ATTENDANCE, attendance);
-      }
+      await fetch(`${API_Base}/attendance/check-in`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ userId }),
+      }).then(handleResponse);
     },
     checkOut: async (userId: string): Promise<void> => {
-      await delay(400);
-      const attendance = loadData(STORAGE_KEYS.ATTENDANCE, []);
-      const today = new Date().toISOString().split('T')[0];
-      const record = attendance.find((a: Attendance) => a.userId === userId && a.date === today);
-
-      if (record && !record.checkOutTime) {
-        const now = new Date();
-        record.checkOutTime = now.toISOString();
-        const start = new Date(record.checkInTime!);
-        const diffMs = now.getTime() - start.getTime();
-        const hours = parseFloat((diffMs / (1000 * 60 * 60)).toFixed(2));
-        record.workHours = hours;
-        record.extraHours = hours > 9 ? parseFloat((hours - 9).toFixed(2)) : 0;
-        saveData(STORAGE_KEYS.ATTENDANCE, attendance);
-      }
+      await fetch(`${API_Base}/attendance/check-out`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ userId }),
+      }).then(handleResponse);
     },
     getForUserToday: async (userId: string): Promise<Attendance | undefined> => {
-      await delay(200);
-      const attendance = loadData(STORAGE_KEYS.ATTENDANCE, []);
-      const today = new Date().toISOString().split('T')[0];
-      return attendance.find((a: Attendance) => a.userId === userId && a.date === today);
+      const res = await fetch(`${API_Base}/attendance/user/${userId}/today`, {
+        headers: getAuthHeaders()
+      });
+      if (!res.ok) return undefined;
+      const data = await res.json();
+      return data ? mapAttendance(data) : undefined;
     }
   },
 
   leaves: {
     getAll: async (): Promise<LeaveRequest[]> => {
-      await delay(300);
-      return loadData(STORAGE_KEYS.LEAVES, []);
+      const res = await fetch(`${API_Base}/leaves`, {
+        headers: getAuthHeaders()
+      });
+      const data = await handleResponse(res);
+      return data.map(mapLeave);
     },
     create: async (request: Partial<LeaveRequest>): Promise<void> => {
-      await delay(400);
-      const leaves = loadData(STORAGE_KEYS.LEAVES, []);
-      leaves.push({
-        id: `l${Date.now()}`,
-        status: LeaveStatus.PENDING,
-        ...request
-      });
-      saveData(STORAGE_KEYS.LEAVES, leaves);
+      await fetch(`${API_Base}/leaves`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify(request),
+      }).then(handleResponse);
     },
     updateStatus: async (id: string, approverId: string, status: LeaveStatus): Promise<void> => {
-      await delay(300);
-      const leaves = loadData(STORAGE_KEYS.LEAVES, []);
-      const leave = leaves.find((l: LeaveRequest) => l.id === id);
-      if (leave) {
-        leave.status = status;
-        leave.approverId = approverId;
-        leave.approvalDate = new Date().toISOString();
-        saveData(STORAGE_KEYS.LEAVES, leaves);
-      }
+      await fetch(`${API_Base}/leaves/${id}/status`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ approverId, status }),
+      }).then(handleResponse);
     }
   },
 
   salaries: {
     getByUserId: async (userId: string): Promise<SalaryStructure | undefined> => {
-      await delay(300);
-      const salaries = loadData(STORAGE_KEYS.SALARIES, MOCK_SALARIES);
-      return salaries.find((s: SalaryStructure) => s.userId === userId);
+      const res = await fetch(`${API_Base}/salaries/user/${userId}`, {
+        headers: getAuthHeaders()
+      });
+      if (!res.ok) return undefined;
+      const data = await res.json();
+      return data ? mapSalary(data) : undefined;
     },
     update: async (userId: string, totalWage: number): Promise<SalaryStructure> => {
-      await delay(500);
-      const salaries = loadData(STORAGE_KEYS.SALARIES, MOCK_SALARIES);
-      
-      const basic = totalWage * 0.50;
-      const hra = basic * 0.50;
-      const standardAllowance = 2000;
-      const pfEmployee = basic * 0.12;
-      const pfEmployer = basic * 0.12;
-      const profTax = 200;
-      const otherComponents = basic + hra + standardAllowance;
-      const fixedAllowance = Math.max(0, totalWage - otherComponents);
-
-      const newStructure: SalaryStructure = { 
-          userId, 
-          totalWage, 
-          yearlyWage: totalWage * 12,
-          workingDaysPerWeek: 5, 
-          basic, 
-          hra, 
-          standardAllowance,
-          fixedAllowance,
-          performanceBonus: 0,
-          travelAllowance: 0,
-          pfEmployee,
-          pfEmployer,
-          profTax
+      const res = await fetch(`${API_Base}/salary/${userId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ totalWage })
+      });
+      const data = await handleResponse(res);
+      return {
+        id: `s${Date.now()}`,
+        userId: userId,
+        ...data
       };
-      
-      const index = salaries.findIndex((s: SalaryStructure) => s.userId === userId);
-      if (index >= 0) salaries[index] = newStructure;
-      else salaries.push(newStructure);
-      
-      saveData(STORAGE_KEYS.SALARIES, salaries);
-      return newStructure;
+    }
+  },
+
+  seed: {
+    attendance: async (): Promise<void> => {
+      await fetch(`${API_Base}/seed/attendance`, { method: 'POST', headers: getAuthHeaders() });
+      await fetch(`${API_Base}/seed/leaves`, { method: 'POST', headers: getAuthHeaders() });
+    }
+  },
+
+  dashboard: {
+    getStats: async () => {
+      const res = await fetch(`${API_Base}/dashboard/stats`, {
+        headers: getAuthHeaders()
+      });
+      return handleResponse(res);
     }
   }
 };
 
-// Kept for backward compat in strict mode if any
-export const db = api; 
+export const db = api;

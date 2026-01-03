@@ -5,7 +5,7 @@ import { api } from '../services/mockDb';
 interface AuthContextType {
   currentUser: User | null;
   login: (email: string, pass: string) => Promise<boolean>;
-  signup: (companyName: string, adminData: Partial<User>, phone: string) => Promise<boolean>;
+  signup: (companyName: string, adminData: Partial<User>, phone: string, file?: File) => Promise<boolean>;
   logout: () => void;
   loading: boolean;
 }
@@ -16,6 +16,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // ... (useEffect remains same) ...
   useEffect(() => {
     const initAuth = async () => {
       const storedId = localStorage.getItem('currentUserId');
@@ -46,9 +47,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return false;
   };
 
-  const signup = async (companyName: string, adminData: Partial<User>, phone: string): Promise<boolean> => {
+  const signup = async (companyName: string, adminData: Partial<User>, phone: string, file?: File): Promise<boolean> => {
     try {
-      const user = await api.auth.signup(companyName, adminData, phone);
+      const user = await api.auth.signup(companyName, adminData, phone, file);
       if (user) {
         setCurrentUser(user);
         localStorage.setItem('currentUserId', user.id);

@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/mockDb';
-import { 
-  LogOut, 
+import {
+  LogOut,
   User as UserIcon,
   Menu,
   X,
@@ -43,7 +43,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   const handleAttendance = async () => {
     if (!currentUser || attendanceLoading) return;
     setAttendanceLoading(true);
-    
+
     try {
       if (checkedIn) {
         await api.attendance.checkOut(currentUser.id);
@@ -64,10 +64,13 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
     }
   };
 
+  const isActive = (path: string) => location.pathname === path;
+
   const navItems = [
-    ...(currentUser?.role === Role.ADMIN ? [{ label: 'Employees', path: '/' }] : [{ label: 'Dashboard', path: '/' }]), 
+    ...(currentUser?.role === Role.ADMIN ? [{ label: 'Employees', path: '/' }] : [{ label: 'Dashboard', path: '/' }]),
     { label: 'Attendance', path: '/attendance' },
     { label: 'Time Off', path: '/leaves' },
+    ...(currentUser?.role === Role.ADMIN ? [{ label: 'Payroll', path: '/payroll' }] : []),
   ];
 
   return (
@@ -79,21 +82,20 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             <div className="flex items-center">
               {/* Logo Area */}
               <div className="flex-shrink-0 flex items-center pr-6 border-r border-slate-200 mr-6">
-                 <div className="h-8 w-8 bg-slate-900 rounded-lg flex items-center justify-center text-white font-bold mr-2">D</div>
-                 <span className="text-xl font-bold text-slate-900">Dayflow</span>
+                <div className="h-8 w-8 bg-slate-900 rounded-lg flex items-center justify-center text-white font-bold mr-2">D</div>
+                <span className="text-xl font-bold text-slate-900">Dayflow</span>
               </div>
-              
+
               {/* Desktop Nav */}
               <nav className="hidden md:flex space-x-6">
                 {navItems.map((item) => (
                   <Link
                     key={item.path}
                     to={item.path}
-                    className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors ${
-                      location.pathname === item.path
+                    className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors ${isActive(item.path)
                         ? 'border-slate-800 text-slate-900'
                         : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700'
-                    }`}
+                      }`}
                   >
                     {item.label}
                   </Link>
@@ -104,42 +106,41 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             <div className="flex items-center space-x-4">
               {/* Check In/Out Button */}
               <div className="hidden md:flex items-center">
-                 <button 
-                   onClick={handleAttendance}
-                   disabled={attendanceLoading}
-                   className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all shadow-sm ${
-                     checkedIn 
-                     ? 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50' 
-                     : 'bg-slate-900 text-white hover:bg-slate-800 border border-transparent'
-                   } ${attendanceLoading ? 'opacity-70 cursor-wait' : ''}`}
-                 >
-                   {attendanceLoading ? (
-                     <span className="inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
-                   ) : (
-                     checkedIn ? <Circle size={10} className="fill-emerald-500 text-emerald-500 animate-pulse" /> : <Clock size={16} />
-                   )}
-                   {checkedIn ? 'Check Out' : 'Check In ->'}
-                 </button>
+                <button
+                  onClick={handleAttendance}
+                  disabled={attendanceLoading}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all shadow-sm ${checkedIn
+                    ? 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+                    : 'bg-slate-900 text-white hover:bg-slate-800 border border-transparent'
+                    } ${attendanceLoading ? 'opacity-70 cursor-wait' : ''}`}
+                >
+                  {attendanceLoading ? (
+                    <span className="inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
+                  ) : (
+                    checkedIn ? <Circle size={10} className="fill-emerald-500 text-emerald-500 animate-pulse" /> : <Clock size={16} />
+                  )}
+                  {checkedIn ? 'Check Out' : 'Check In ->'}
+                </button>
               </div>
 
               {/* Profile Dropdown */}
               <div className="relative ml-3">
-                <div 
-                  className="flex items-center space-x-3 cursor-pointer p-1 rounded-full hover:bg-slate-50 transition-colors" 
+                <div
+                  className="flex items-center space-x-3 cursor-pointer p-1 rounded-full hover:bg-slate-50 transition-colors"
                   onClick={() => setProfileMenuOpen(!profileMenuOpen)}
                 >
-                   <div className="text-right hidden sm:block">
-                      <p className="text-sm font-semibold text-slate-700 leading-none">{currentUser?.firstName} {currentUser?.lastName}</p>
-                      <p className="text-[10px] uppercase tracking-wider text-slate-500 mt-1 font-medium">{currentUser?.role}</p>
-                   </div>
-                   <img className="h-10 w-10 rounded-full bg-slate-200 border-2 border-white shadow-sm object-cover" src={currentUser?.profilePictureUrl} alt="" />
+                  <div className="text-right hidden sm:block">
+                    <p className="text-sm font-semibold text-slate-700 leading-none">{currentUser?.firstName} {currentUser?.lastName}</p>
+                    <p className="text-[10px] uppercase tracking-wider text-slate-500 mt-1 font-medium">{currentUser?.role}</p>
+                  </div>
+                  <img className="h-10 w-10 rounded-full bg-slate-200 border-2 border-white shadow-sm object-cover" src={currentUser?.profilePictureUrl} alt="" />
                 </div>
-                
+
                 {profileMenuOpen && (
                   <div className="origin-top-right absolute right-0 mt-2 w-56 rounded-xl shadow-lg py-2 bg-white ring-1 ring-black ring-opacity-5 focus:outline-none z-50 animate-in fade-in zoom-in-95 duration-100">
                     <div className="px-4 py-2 border-b border-slate-100 md:hidden">
-                       <p className="text-sm font-semibold text-slate-800">{currentUser?.firstName}</p>
-                       <p className="text-xs text-slate-500">{currentUser?.role}</p>
+                      <p className="text-sm font-semibold text-slate-800">{currentUser?.firstName}</p>
+                      <p className="text-xs text-slate-500">{currentUser?.role}</p>
                     </div>
                     <Link to={`/profile/${currentUser?.id}`} className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 flex items-center" onClick={() => setProfileMenuOpen(false)}>
                       <UserIcon size={16} className="mr-3 text-slate-400" /> My Profile
@@ -150,7 +151,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
                   </div>
                 )}
               </div>
-              
+
               {/* Mobile menu button */}
               <div className="flex items-center md:hidden">
                 <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="text-slate-500 hover:text-slate-700 p-2">
@@ -169,27 +170,25 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
                 <Link
                   key={item.path}
                   to={item.path}
-                  className={`block pl-3 pr-4 py-3 border-l-4 text-base font-medium ${
-                    location.pathname === item.path
-                      ? 'bg-slate-50 border-slate-800 text-slate-900'
-                      : 'border-transparent text-slate-500 hover:bg-slate-50 hover:border-slate-300 hover:text-slate-700'
-                  }`}
+                  className={`block pl-3 pr-4 py-3 border-l-4 text-base font-medium ${location.pathname === item.path
+                    ? 'bg-slate-50 border-slate-800 text-slate-900'
+                    : 'border-transparent text-slate-500 hover:bg-slate-50 hover:border-slate-300 hover:text-slate-700'
+                    }`}
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   {item.label}
                 </Link>
               ))}
               <div className="p-4 border-t border-slate-100 mt-2">
-                 <button 
-                   onClick={() => { handleAttendance(); setMobileMenuOpen(false); }}
-                   disabled={attendanceLoading}
-                   className={`w-full text-center py-3 rounded-lg font-medium shadow-sm flex justify-center items-center gap-2 ${
-                      checkedIn ? 'bg-white border border-slate-300 text-slate-700' : 'bg-slate-900 text-white'
-                   }`}
-                 >
-                   {attendanceLoading && <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></span>}
-                   {checkedIn ? 'Check Out' : 'Check In'}
-                 </button>
+                <button
+                  onClick={() => { handleAttendance(); setMobileMenuOpen(false); }}
+                  disabled={attendanceLoading}
+                  className={`w-full text-center py-3 rounded-lg font-medium shadow-sm flex justify-center items-center gap-2 ${checkedIn ? 'bg-white border border-slate-300 text-slate-700' : 'bg-slate-900 text-white'
+                    }`}
+                >
+                  {attendanceLoading && <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></span>}
+                  {checkedIn ? 'Check Out' : 'Check In'}
+                </button>
               </div>
             </div>
           </div>
