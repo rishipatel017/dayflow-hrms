@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
+import { toast } from 'react-hot-toast';
+import { LogIn, AtSign, Lock, ArrowRight, ShieldCheck } from 'lucide-react';
 
 export const Login: React.FC = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -15,70 +16,82 @@ export const Login: React.FC = () => {
     setLoading(true);
     const success = await login(email, password);
     if (success) {
+      toast.success('Welcome back to Dayflow!');
       navigate('/');
     } else {
-      setError('Invalid ID/Email or Password');
+      toast.error('Invalid Credentials or Unverified Account.');
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4 font-sans">
-      <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-slate-100">
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4 font-sans selection:bg-slate-900 selection:text-white">
+      <div className="w-full max-w-md">
+        {/* Brand Identity */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-slate-900 text-white font-bold text-2xl mb-4 shadow-lg shadow-slate-200">
-            D
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-slate-900 text-white shadow-xl shadow-slate-200 mb-4 transition-transform hover:scale-105">
+            <ShieldCheck size={32} />
           </div>
-          <h1 className="text-2xl font-bold text-slate-800">Welcome Back</h1>
-          <p className="text-slate-400 mt-1 text-sm">Sign in to manage your HR operations</p>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Dayflow</h1>
+          <p className="text-slate-500 text-sm mt-1 font-medium">Enterprise Resource Management</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
-          {error && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm text-center border border-red-100">{error}</div>}
-          
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Login ID / Email</label>
-            <input 
-              type="text" 
-              required
-              className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-slate-500 focus:ring-2 focus:ring-slate-200 outline-none transition-all placeholder:text-slate-300"
-              placeholder="e.g. OIALAD20220001"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
+        {/* Login Card */}
+        <div className="bg-white p-8 md:p-10 rounded-3xl shadow-xl shadow-slate-200/60 border border-slate-100 animate-fadeIn">
+          <div className="flex items-center gap-3 mb-8">
+            <div className="w-1 h-6 bg-slate-900 rounded-full"></div>
+            <h2 className="text-xl font-bold text-slate-800">Member Login</h2>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
-            <input 
-              type="password" 
-              required
-              className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:border-slate-500 focus:ring-2 focus:ring-slate-200 outline-none transition-all placeholder:text-slate-300"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Login ID / Email</label>
+              <div className="relative">
+                <AtSign className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                <input
+                  type="text"
+                  required
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-12 pr-4 py-3.5 text-slate-800 placeholder:text-slate-300 outline-none focus:ring-4 focus:ring-slate-900/5 focus:border-slate-900 transition-all font-medium"
+                  placeholder="e.g. admin@dayflow.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Security Password</label>
+              <div className="relative">
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                <input
+                  type="password"
+                  required
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-12 pr-4 py-3.5 text-slate-800 placeholder:text-slate-300 outline-none focus:ring-4 focus:ring-slate-900/5 focus:border-slate-900 transition-all font-medium"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className={`w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-4 rounded-xl transition-all shadow-lg shadow-slate-200 active:scale-[0.98] flex items-center justify-center gap-2 ${loading ? 'opacity-70 cursor-wait' : ''}`}
+            >
+              {loading ? (
+                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+              ) : (
+                <>Sign In to Dashboard <ArrowRight size={18} /></>
+              )}
+            </button>
+          </form>
+
+          <div className="mt-10 pt-8 border-t border-slate-50 text-center">
+            <p className="text-sm text-slate-500 font-medium">
+              Don't have an account? <Link to="/signup" className="text-slate-900 font-bold hover:underline underline-offset-4 decoration-2">Create Account</Link>
+            </p>
           </div>
-
-          <button 
-            type="submit" 
-            disabled={loading}
-            className={`w-full bg-slate-900 hover:bg-slate-800 text-white font-semibold py-3 rounded-lg transition-colors shadow-lg shadow-slate-200 ${loading ? 'opacity-70 cursor-wait' : ''}`}
-          >
-            {loading ? 'Signing In...' : 'Sign In'}
-          </button>
-        </form>
-
-        <div className="mt-8 pt-6 border-t border-slate-100">
-           <p className="text-sm text-center text-slate-500">
-             Don't have an account? <Link to="/signup" className="text-blue-600 font-medium hover:underline">Sign Up</Link>
-           </p>
-        </div>
-        
-        <div className="mt-6 bg-slate-50 p-4 rounded-lg text-xs text-slate-400 text-center">
-            <p className="font-semibold mb-1">Demo Credentials:</p>
-            <p>Admin: admin@dayflow.com / admin123</p>
-            <p>Emp: john@dayflow.com / user123</p>
         </div>
       </div>
     </div>

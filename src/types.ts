@@ -31,7 +31,12 @@ export interface User {
   lastName: string;
   joiningDate: string; // ISO Date
   profilePictureUrl: string;
-  passwordHash: string; 
+  passwordHash: string;
+  isEmailVerified: boolean;
+  verificationToken?: string;
+  totalWage?: number; // For onboarding transit
+  profile?: EmployeeProfile;
+  salary?: SalaryStructure;
 }
 
 export interface EmployeeProfile {
@@ -49,6 +54,8 @@ export interface EmployeeProfile {
   nationality?: string;
   personalEmail?: string;
   gender?: string;
+  skills: string[];
+  documents?: { name: string; url: string; type?: string }[];
 }
 
 export interface Attendance {
@@ -80,17 +87,31 @@ export interface SalaryStructure {
   totalWage: number; // Monthly CTC
   yearlyWage: number;
   workingDaysPerWeek: number;
-  
-  // Earnings
+  breakTime: number;
+
+  // Configuration
+  basicType: 'fixed' | 'percent';
+  basicValue: number;
+  hraType: 'fixed' | 'percent'; // percent of basic
+  hraValue: number;
+  stdType: 'fixed' | 'percent';
+  stdValue: number;
+  bonusType: 'fixed' | 'percent';
+  bonusValue: number;
+  ltaType: 'fixed' | 'percent';
+  ltaValue: number;
+  pfRate: number;
+  profTax: number;
+
+  // Earnings (Calculated/Stored)
   basic: number;
   hra: number;
   standardAllowance: number;
   performanceBonus: number;
   travelAllowance: number;
   fixedAllowance: number;
-  
-  // Deductions (Calculated)
+
+  // Deductions (Calculated/Stored)
   pfEmployee: number;
   pfEmployer: number;
-  profTax: number;
 }

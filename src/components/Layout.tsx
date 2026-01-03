@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { api } from '../services/mockDb';
+import { api } from '../services/api';
+import { toast } from 'react-hot-toast';
 import {
   LogOut,
   User as UserIcon,
@@ -11,9 +12,10 @@ import {
   Clock
 } from 'lucide-react';
 import { Role } from '../types';
+import { getInitials, getAvatarColor } from '../utils/avatarUtils';
 
 export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { currentUser, logout } = useAuth();
+  const { currentUser, company, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -21,11 +23,11 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   const [checkedIn, setCheckedIn] = useState(false);
   const [attendanceLoading, setAttendanceLoading] = useState(false);
 
-  // Fetch initial attendance status safely
+  // Fetch initial attendance status safely (only for employees)
   useEffect(() => {
     let mounted = true;
     const checkStatus = async () => {
-      if (currentUser) {
+      if (currentUser && currentUser.role === Role.EMPLOYEE) {
         try {
           const record = await api.attendance.getForUserToday(currentUser.id);
           if (mounted) {
@@ -47,30 +49,41 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
     try {
       if (checkedIn) {
         await api.attendance.checkOut(currentUser.id);
+        toast.success("Checked out successfully!");
         setCheckedIn(false);
       } else {
         await api.attendance.checkIn(currentUser.id);
+        toast.success("Checked in successfully!");
         setCheckedIn(true);
       }
-      // Optional: Refresh current page data if on Attendance page
       if (location.pathname === '/attendance') {
-        navigate(0); // Soft refresh if needed, or better, leverage context
+        navigate(0);
       }
-    } catch (error) {
+    } catch (error: any) {
+      const msg = error.response?.data?.message || "Attendance action failed";
+      toast.error(msg);
       console.error("Attendance action failed", error);
-      alert("Failed to update attendance. Please try again.");
+
+      // Refresh status if we get a conflict error
+      if (error.response?.status === 400 || error.response?.status === 404) {
+        const record = await api.attendance.getForUserToday(currentUser.id);
+        setCheckedIn(!!record && !record.checkOutTime);
+      }
     } finally {
       setAttendanceLoading(false);
     }
   };
 
-  const isActive = (path: string) => location.pathname === path;
-
   const navItems = [
-    ...(currentUser?.role === Role.ADMIN ? [{ label: 'Employees', path: '/' }] : [{ label: 'Dashboard', path: '/' }]),
-    { label: 'Attendance', path: '/attendance' },
-    { label: 'Time Off', path: '/leaves' },
-    ...(currentUser?.role === Role.ADMIN ? [{ label: 'Payroll', path: '/payroll' }] : []),
+    ...(currentUser?.role === Role.ADMIN ? [
+      { label: 'Employees', path: '/' },
+      { label: 'Attendance', path: '/attendance' },
+      { label: 'Time Off', path: '/leaves' }
+    ] : [
+      { label: 'Dashboard', path: '/' },
+      { label: 'Attendance', path: '/attendance' },
+      { label: 'Time Off', path: '/leaves' }
+    ])
   ];
 
   return (
@@ -82,8 +95,14 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             <div className="flex items-center">
               {/* Logo Area */}
               <div className="flex-shrink-0 flex items-center pr-6 border-r border-slate-200 mr-6">
-                <div className="h-8 w-8 bg-slate-900 rounded-lg flex items-center justify-center text-white font-bold mr-2">D</div>
-                <span className="text-xl font-bold text-slate-900">Dayflow</span>
+                {company?.logo ? (
+                  <img src={company.logo} alt={company.name} className="h-8 w-8 rounded-lg object-cover mr-2" />
+                ) : (
+                  <div className="h-8 w-8 bg-slate-900 rounded-lg flex items-center justify-center text-white font-bold mr-2">
+                    {company?.name?.charAt(0) || 'D'}
+                  </div>
+                )}
+                <span className="text-xl font-bold text-slate-900">{company?.name || 'Dayflow'}</span>
               </div>
 
               {/* Desktop Nav */}
@@ -92,9 +111,9 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
                   <Link
                     key={item.path}
                     to={item.path}
-                    className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors ${isActive(item.path)
-                        ? 'border-slate-800 text-slate-900'
-                        : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700'
+                    className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors ${location.pathname === item.path
+                      ? 'border-slate-800 text-slate-900'
+                      : 'border-transparent text-slate-500 hover:border-slate-300 hover:text-slate-700'
                       }`}
                   >
                     {item.label}
@@ -104,24 +123,26 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             </div>
 
             <div className="flex items-center space-x-4">
-              {/* Check In/Out Button */}
-              <div className="hidden md:flex items-center">
-                <button
-                  onClick={handleAttendance}
-                  disabled={attendanceLoading}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all shadow-sm ${checkedIn
-                    ? 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
-                    : 'bg-slate-900 text-white hover:bg-slate-800 border border-transparent'
-                    } ${attendanceLoading ? 'opacity-70 cursor-wait' : ''}`}
-                >
-                  {attendanceLoading ? (
-                    <span className="inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
-                  ) : (
-                    checkedIn ? <Circle size={10} className="fill-emerald-500 text-emerald-500 animate-pulse" /> : <Clock size={16} />
-                  )}
-                  {checkedIn ? 'Check Out' : 'Check In ->'}
-                </button>
-              </div>
+              {/* Check In/Out Button - Only for Employees */}
+              {currentUser?.role === Role.EMPLOYEE && (
+                <div className="hidden md:flex items-center">
+                  <button
+                    onClick={handleAttendance}
+                    disabled={attendanceLoading}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all shadow-sm ${checkedIn
+                      ? 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+                      : 'bg-slate-900 text-white hover:bg-slate-800 border border-transparent'
+                      } ${attendanceLoading ? 'opacity-70 cursor-wait' : ''}`}
+                  >
+                    {attendanceLoading ? (
+                      <span className="inline-block w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
+                    ) : (
+                      checkedIn ? <Circle size={10} className="fill-emerald-500 text-emerald-500 animate-pulse" /> : <Clock size={16} />
+                    )}
+                    {checkedIn ? 'Check Out' : 'Check In ->'}
+                  </button>
+                </div>
+              )}
 
               {/* Profile Dropdown */}
               <div className="relative ml-3">
@@ -133,7 +154,13 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
                     <p className="text-sm font-semibold text-slate-700 leading-none">{currentUser?.firstName} {currentUser?.lastName}</p>
                     <p className="text-[10px] uppercase tracking-wider text-slate-500 mt-1 font-medium">{currentUser?.role}</p>
                   </div>
-                  <img className="h-10 w-10 rounded-full bg-slate-200 border-2 border-white shadow-sm object-cover" src={currentUser?.profilePictureUrl} alt="" />
+                  {currentUser?.profilePictureUrl ? (
+                    <img className="h-10 w-10 rounded-full bg-slate-200 border-2 border-white shadow-sm object-cover" src={currentUser.profilePictureUrl} alt={`${currentUser.firstName} ${currentUser.lastName}`} />
+                  ) : (
+                    <div className={`h-10 w-10 rounded-full border-2 border-white shadow-sm flex items-center justify-center text-white font-bold text-sm ${getAvatarColor(`${currentUser?.firstName} ${currentUser?.lastName}`)}`}>
+                      {getInitials(currentUser?.firstName || '', currentUser?.lastName)}
+                    </div>
+                  )}
                 </div>
 
                 {profileMenuOpen && (
@@ -179,17 +206,19 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
                   {item.label}
                 </Link>
               ))}
-              <div className="p-4 border-t border-slate-100 mt-2">
-                <button
-                  onClick={() => { handleAttendance(); setMobileMenuOpen(false); }}
-                  disabled={attendanceLoading}
-                  className={`w-full text-center py-3 rounded-lg font-medium shadow-sm flex justify-center items-center gap-2 ${checkedIn ? 'bg-white border border-slate-300 text-slate-700' : 'bg-slate-900 text-white'
-                    }`}
-                >
-                  {attendanceLoading && <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></span>}
-                  {checkedIn ? 'Check Out' : 'Check In'}
-                </button>
-              </div>
+              {currentUser?.role === Role.EMPLOYEE && (
+                <div className="p-4 border-t border-slate-100 mt-2">
+                  <button
+                    onClick={() => { handleAttendance(); setMobileMenuOpen(false); }}
+                    disabled={attendanceLoading}
+                    className={`w-full text-center py-3 rounded-lg font-medium shadow-sm flex justify-center items-center gap-2 ${checkedIn ? 'bg-white border border-slate-300 text-slate-700' : 'bg-slate-900 text-white'
+                      }`}
+                  >
+                    {attendanceLoading && <span className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin"></span>}
+                    {checkedIn ? 'Check Out' : 'Check In'}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}

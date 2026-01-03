@@ -74,7 +74,7 @@ These features were outlined in the requirements but require real backend/storag
 
 ---
 
-## 🛠 Tech Stack
+## Tech Stack
 
 - **Frontend:** React 19, TypeScript
 - **Styling:** Tailwind CSS
@@ -86,13 +86,11 @@ These features were outlined in the requirements but require real backend/storag
 1. **Install Dependencies:**
    ```bash
    npm install
+   npm install --prefix server
    ```
 
-2. **Start Development Server:**
+2. **Start Development Server (Frontend + Backend):**
    ```bash
    npm run dev
    ```
-
-3. **Explore Demo Credentials:**
-   - **Admin:** `admin@dayflow.com` / `admin123`
-   - **Employee:** `john@dayflow.com` / `user123`
+   This single command will start both the Vite frontend (port 5173/3000) and the Express backend (port 5000) concurrently.

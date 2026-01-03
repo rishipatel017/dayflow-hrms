@@ -1,11 +1,12 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User } from '../types';
-import { api } from '../services/mockDb';
+import { api } from '../services/api';
 
 interface AuthContextType {
   currentUser: User | null;
+  company: { name: string; logo: string | null } | null;
   login: (email: string, pass: string) => Promise<boolean>;
-  signup: (companyName: string, adminData: Partial<User>, phone: string, file?: File) => Promise<boolean>;
+  signup: (companyName: string, adminData: Partial<User>, phone: string, logo: File | null) => Promise<boolean>;
   logout: () => void;
   loading: boolean;
 }
@@ -14,18 +15,27 @@ const AuthContext = createContext<AuthContextType>(null!);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [company, setCompany] = useState<{ name: string; logo: string | null } | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // ... (useEffect remains same) ...
   useEffect(() => {
     const initAuth = async () => {
-      const storedId = localStorage.getItem('currentUserId');
-      if (storedId) {
+      const token = localStorage.getItem('dayflow_token');
+      if (token) {
         try {
-          const user = await api.users.getById(storedId);
-          if (user) setCurrentUser(user);
+          const storedUser = localStorage.getItem('dayflow_user');
+          const storedCompany = localStorage.getItem('dayflow_company');
+          if (storedUser) {
+            setCurrentUser(JSON.parse(storedUser));
+          }
+          if (storedCompany) {
+            setCompany(JSON.parse(storedCompany));
+          }
         } catch (e) {
           console.error("Failed to restore session", e);
+          localStorage.removeItem('dayflow_token');
+          localStorage.removeItem('dayflow_user');
+          localStorage.removeItem('dayflow_company');
         }
       }
       setLoading(false);
@@ -35,10 +45,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (email: string, pass: string): Promise<boolean> => {
     try {
-      const user = await api.auth.login(email, pass);
-      if (user) {
-        setCurrentUser(user);
-        localStorage.setItem('currentUserId', user.id);
+      const response = await api.auth.login(email, pass);
+      if (response && response.user) {
+        setCurrentUser(response.user);
+        setCompany(response.company || { name: 'Dayflow', logo: null });
+        localStorage.setItem('dayflow_user', JSON.stringify(response.user));
+        localStorage.setItem('dayflow_company', JSON.stringify(response.company));
         return true;
       }
     } catch (e) {
@@ -47,12 +59,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return false;
   };
 
-  const signup = async (companyName: string, adminData: Partial<User>, phone: string, file?: File): Promise<boolean> => {
+  const signup = async (companyName: string, adminData: Partial<User>, phone: string, logo: File | null): Promise<boolean> => {
     try {
-      const user = await api.auth.signup(companyName, adminData, phone, file);
+      const user = await api.auth.signup(companyName, adminData, phone, logo);
       if (user) {
-        setCurrentUser(user);
-        localStorage.setItem('currentUserId', user.id);
         return true;
       }
     } catch (e) {
@@ -63,11 +73,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = () => {
     setCurrentUser(null);
-    localStorage.removeItem('currentUserId');
+    setCompany(null);
+    localStorage.removeItem('dayflow_token');
+    localStorage.removeItem('dayflow_user');
+    localStorage.removeItem('dayflow_company');
   };
 
   return (
-    <AuthContext.Provider value={{ currentUser, login, signup, logout, loading }}>
+    <AuthContext.Provider value={{ currentUser, company, login, signup, logout, loading }}>
       {children}
     </AuthContext.Provider>
   );

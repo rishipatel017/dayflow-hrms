@@ -1,0 +1,174 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  EMPLOYEE
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  HALF_DAY
+  ON_LEAVE
+}
+
+enum LeaveType {
+  PAID
+  SICK
+  UNPAID
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id                String            @id @default(uuid())
+  employeeId        String            @unique
+  email             String            @unique
+  role              Role              @default(EMPLOYEE)
+  firstName         String
+  lastName          String
+  joiningDate       DateTime
+  profilePictureUrl String?
+  passwordHash      String
+  
+  isEmailVerified          Boolean           @default(false)
+  verificationToken        String?
+  emailVerificationExpiry  DateTime?
+  
+  companyName              String?           // Company name (ADMIN only)
+  
+  profile           EmployeeProfile?
+  attendance        Attendance[]
+  leaveRequests     LeaveRequest[]
+  salary            SalaryStructure?
+  
+  // Relations for manager/approver
+  subordinates      EmployeeProfile[] @relation("Manager")
+  approvedLeaves    LeaveRequest[]    @relation("Approver")
+  
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+}
+
+model EmployeeProfile {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  address         String
+  phone           String
+  jobPosition     String
+  department      String
+  
+  managerId       String?
+  manager         User?    @relation("Manager", fields: [managerId], references: [id])
+  
+  bankAccountNo   String
+  ifsc            String
+  pan             String
+  uan             String
+  maritalStatus   String?
+  nationality     String?
+  personalEmail   String?
+  gender          String?
+  
+  skills          String[] @default([])
+  documents       Json?    // Array of {name, url, type}
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Attendance {
+  id           String           @id @default(uuid())
+  userId       String
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  date         DateTime         @db.Date
+  checkInTime  DateTime?
+  checkOutTime DateTime?
+  workHours    Float            @default(0)
+  status       AttendanceStatus @default(PRESENT)
+  extraHours   Float?           @default(0)
+  
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@unique([userId, date])
+}
+
+model LeaveRequest {
+  id             String      @id @default(uuid())
+  userId         String
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  type           LeaveType
+  startDate      DateTime
+  endDate        DateTime
+  status         LeaveStatus @default(PENDING)
+  reason         String
+  attachmentUrl  String?
+  approverRemarks String?
+  
+  approvalDate   DateTime?
+  approverId     String?
+  approver       User?       @relation("Approver", fields: [approverId], references: [id])
+  
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+}
+
+model SalaryStructure {
+  id                 String   @id @default(uuid())
+  userId             String   @unique
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  totalWage          Float    // Monthly CTC
+  yearlyWage         Float
+  workingDaysPerWeek Int      @default(5)
+  breakTime          Float    @default(1.0)
+  
+  // Configuration Fields
+  basicType          String   @default("percent") // fixed or percent
+  basicValue         Float    @default(50)
+  
+  hraType            String   @default("percent") // fixed or percent
+  hraValue           Float    @default(50)
+  
+  stdType            String   @default("fixed")
+  stdValue           Float    @default(4167)
+  
+  bonusType          String   @default("percent")
+  bonusValue         Float    @default(8.33)
+  
+  ltaType            String   @default("percent")
+  ltaValue           Float    @default(8.33)
+  
+  pfRate             Float    @default(12)
+  profTax            Float    @default(200)
+
+  // Earnings (Calculated/Stored)
+  basic              Float
+  hra                Float
+  standardAllowance  Float
+  performanceBonus   Float    @default(0)
+  travelAllowance    Float    @default(0)
+  fixedAllowance     Float    @default(0)
+  
+  // Deductions (Calculated/Stored)
+  pfEmployee         Float
+  pfEmployer         Float
+  
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}

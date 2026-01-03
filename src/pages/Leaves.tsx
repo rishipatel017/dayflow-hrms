@@ -1,230 +1,253 @@
 import React, { useState, useEffect } from 'react';
+import { api } from '../services/api';
+import { LeaveRequest, LeaveStatus, Role } from '../types';
 import { useAuth } from '../context/AuthContext';
-import { api } from '../services/mockDb';
-import { LeaveRequest, LeaveStatus, LeaveType, Role, User } from '../types';
-import { Check, X, Plus, Calendar, Clock, Filter } from 'lucide-react';
+import { toast } from 'react-hot-toast';
+import { ConfirmationModal } from '../components/ConfirmationModal';
+import { Calendar, Clock, CheckCircle, XCircle, AlertCircle, FileText, Send, MessageSquare, Paperclip } from 'lucide-react';
+import { format } from 'date-fns';
 
-export const Leaves: React.FC = () => {
+export const LeavesPage: React.FC = () => {
   const { currentUser } = useAuth();
   const [leaves, setLeaves] = useState<LeaveRequest[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [remarks, setRemarks] = useState<Record<string, string>>({});
 
-  // Form State
+  const [modal, setModal] = useState<{ isOpen: boolean, id: string, status: LeaveStatus | null }>({ isOpen: false, id: '', status: null });
+  const [showForm, setShowForm] = useState(false);
+  const [attachment, setAttachment] = useState<File | null>(null);
   const [formData, setFormData] = useState({
-    type: LeaveType.PAID,
+    type: 'PAID',
     startDate: '',
     endDate: '',
     reason: ''
   });
 
-  const fetchData = async () => {
+  useEffect(() => {
+    fetchLeaves();
+  }, [currentUser]);
+
+  const fetchLeaves = async () => {
     setLoading(true);
-    const [allUsers, allLeaves] = await Promise.all([
-      api.users.getAll(),
-      api.leaves.getAll()
-    ]);
-
-    setUsers(allUsers);
-
-    if (currentUser?.role === Role.ADMIN) {
-      setLeaves(allLeaves.sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()));
-    } else {
-      setLeaves(allLeaves.filter(l => l.userId === currentUser?.id));
+    try {
+      const data = await api.leaves.getAll();
+      if (currentUser?.role === Role.EMPLOYEE) {
+        // Employees see only their own leave requests
+        setLeaves(data.filter(l => l.userId === currentUser.id));
+      } else {
+        // Admin sees all employee leave requests (excluding their own if any)
+        setLeaves(data.filter(l => l.userId !== currentUser?.id));
+      }
+    } catch (e) {
+      toast.error("Failed to load leave records");
     }
     setLoading(false);
   };
 
-  useEffect(() => {
-    fetchData();
-  }, [currentUser]);
-
-  const handleCreate = async (e: React.FormEvent) => {
+  const handleApply = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentUser) return;
-    await api.leaves.create({
-      userId: currentUser.id,
-      ...formData
-    });
-    setIsModalOpen(false);
-    fetchData();
+    const loadingToast = toast.loading("Submitting leave request...");
+    try {
+      await api.leaves.create({
+        ...formData,
+        userId: currentUser!.id,
+        status: LeaveStatus.PENDING
+      } as any, attachment || undefined);
+      toast.success('Leave request submitted!', { id: loadingToast });
+      setShowForm(false);
+      setAttachment(null);
+      fetchLeaves();
+    } catch (e) {
+      toast.error('Failed to submit leave', { id: loadingToast });
+    }
   };
 
-  const handleAction = async (id: string, approve: boolean) => {
-    if (!currentUser) return;
-    await api.leaves.updateStatus(id, currentUser.id, approve ? LeaveStatus.APPROVED : LeaveStatus.REJECTED);
-    fetchData();
+  const handleStatusUpdate = async () => {
+    if (!modal.id || !modal.status) return;
+    const loadingToast = toast.loading(`Updating leave status...`);
+    try {
+      await api.leaves.updateStatus(modal.id, currentUser!.id, modal.status, remarks[modal.id] || '');
+      toast.success(`Leave ${modal.status.toLowerCase()} successfully!`, { id: loadingToast });
+      setModal({ isOpen: false, id: '', status: null });
+      fetchLeaves();
+    } catch (e) {
+      toast.error('Update failed', { id: loadingToast });
+    }
+  };
+
+  const getStatusStyle = (status: LeaveStatus) => {
+    switch (status) {
+      case LeaveStatus.APPROVED: return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+      case LeaveStatus.REJECTED: return 'bg-red-100 text-red-700 border-red-200';
+      default: return 'bg-amber-100 text-amber-700 border-amber-200';
+    }
   };
 
   return (
-    <div className="space-y-6">
-      {/* Top Header & Actions */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <div className="max-w-6xl mx-auto space-y-8 animate-fadeIn pb-12">
+      <ConfirmationModal
+        isOpen={modal.isOpen}
+        onClose={() => setModal({ isOpen: false, id: '', status: null })}
+        onConfirm={handleStatusUpdate}
+        title={`${modal.status === LeaveStatus.APPROVED ? 'Approve' : 'Reject'} Leave?`}
+        message={`Are you sure you want to ${modal.status?.toLowerCase()} this leave request?`}
+        type={modal.status === LeaveStatus.REJECTED ? 'danger' : 'info'}
+      />
+
+      <div className="flex justify-between items-center border-b border-slate-200 pb-6">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800">Time Off</h2>
-          <p className="text-slate-500 text-sm">
-            {currentUser?.role === Role.ADMIN ? 'Manage employee leave requests' : 'Request and track your time off'}
-          </p>
+          <h1 className="text-3xl font-bold text-slate-900">Leaves & Time Off</h1>
+          <p className="text-slate-500 mt-1">Manage leave requests and track history.</p>
         </div>
-        {currentUser?.role === Role.EMPLOYEE && (
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="bg-slate-900 hover:bg-slate-800 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors shadow-sm"
-          >
-            <Plus size={18} />
-            <span>NEW REQUEST</span>
-          </button>
-        )}
-      </div>
-
-      {/* Balance Cards - Only Visible to EMPLOYEES */}
-      {currentUser?.role === Role.EMPLOYEE && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 animate-fadeIn">
-          <div className="bg-white p-6 rounded-xl border border-slate-200 border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between h-32">
-            <div className="flex justify-between items-start">
-              <h3 className="text-blue-600 font-bold text-lg">Paid Time Off</h3>
-              <Clock className="text-blue-100 p-1 bg-blue-50 rounded-full" size={28} />
-            </div>
-            <div>
-              <p className="text-3xl font-bold text-slate-800">24 <span className="text-sm font-normal text-slate-500">Days</span></p>
-              <p className="text-xs text-slate-400 mt-1 font-medium">Available Balance</p>
-            </div>
-          </div>
-          <div className="bg-white p-6 rounded-xl border border-slate-200 border-l-4 border-l-sky-500 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between h-32">
-            <div className="flex justify-between items-start">
-              <h3 className="text-sky-600 font-bold text-lg">Sick Time Off</h3>
-              <Calendar className="text-sky-100 p-1 bg-sky-50 rounded-full" size={28} />
-            </div>
-            <div>
-              <p className="text-3xl font-bold text-slate-800">07 <span className="text-sm font-normal text-slate-500">Days</span></p>
-              <p className="text-xs text-slate-400 mt-1 font-medium">Available Balance</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Leave List */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
-          <h3 className="font-bold text-slate-700">Leave Requests</h3>
-          <div className="flex gap-2 text-slate-400">
-            <Filter size={18} />
-          </div>
-        </div>
-        <div className="overflow-x-auto">
-          {loading ? (
-            <div className="p-8 text-center text-slate-500">Loading requests...</div>
-          ) : (
-            <table className="w-full text-left text-sm text-slate-600">
-              <thead className="bg-white border-b border-slate-200">
-                <tr>
-                  <th className="px-6 py-4 font-bold text-slate-700">Name</th>
-                  <th className="px-6 py-4 font-bold text-slate-700">Start Date</th>
-                  <th className="px-6 py-4 font-bold text-slate-700">End Date</th>
-                  <th className="px-6 py-4 font-bold text-slate-700">Type</th>
-                  <th className="px-6 py-4 font-bold text-slate-700">Status</th>
-                  {currentUser?.role === Role.ADMIN && <th className="px-6 py-4 text-right">Actions</th>}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {leaves.map(leave => {
-                  const user = users.find(u => u.id === leave.userId);
-                  return (
-                    <tr key={leave.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-6 py-4 font-medium text-slate-900 flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white ${user?.id === currentUser?.id ? 'bg-slate-700' : 'bg-slate-400'
-                          }`}>
-                          {user?.firstName.charAt(0)}
-                        </div>
-                        {user ? `${user.firstName} ${user.lastName}` : 'Unknown'}
-                      </td>
-                      <td className="px-6 py-4 font-mono">{leave.startDate}</td>
-                      <td className="px-6 py-4 font-mono">{leave.endDate}</td>
-                      <td className="px-6 py-4">
-                        <span className={`px-2 py-1 rounded text-xs font-semibold ${leave.type === LeaveType.PAID ? 'bg-blue-100 text-blue-700' :
-                            leave.type === LeaveType.SICK ? 'bg-sky-100 text-sky-700' : 'bg-gray-100 text-gray-700'
-                          }`}>
-                          {leave.type}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        {leave.status === LeaveStatus.APPROVED && <span className="inline-flex items-center gap-1 text-emerald-600 font-bold text-xs uppercase tracking-wide"><Check size={14} /> Approved</span>}
-                        {leave.status === LeaveStatus.REJECTED && <span className="inline-flex items-center gap-1 text-red-600 font-bold text-xs uppercase tracking-wide"><X size={14} /> Rejected</span>}
-                        {leave.status === LeaveStatus.PENDING && <span className="inline-flex items-center gap-1 text-amber-500 font-bold text-xs uppercase tracking-wide">Pending</span>}
-                      </td>
-                      {currentUser?.role === Role.ADMIN && (
-                        <td className="px-6 py-4 text-right">
-                          {leave.status === LeaveStatus.PENDING && (
-                            <div className="flex justify-end gap-2">
-                              <button onClick={() => handleAction(leave.id, true)} className="bg-emerald-500 hover:bg-emerald-600 text-white p-1.5 rounded-lg shadow-sm transition-colors">
-                                <Check size={16} />
-                              </button>
-                              <button onClick={() => handleAction(leave.id, false)} className="bg-red-500 hover:bg-red-600 text-white p-1.5 rounded-lg shadow-sm transition-colors">
-                                <X size={16} />
-                              </button>
-                            </div>
-                          )}
-                        </td>
-                      )}
-                    </tr>
-                  );
-                })}
-                {leaves.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="text-center py-12 text-slate-400">No leave requests found.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+        <div className="flex items-center gap-4">
+          {/* Only employees can apply for leave */}
+          {currentUser?.role === Role.EMPLOYEE && (
+            <button
+              onClick={() => setShowForm(!showForm)}
+              className={`px-6 py-2.5 rounded-xl font-bold transition-all flex items-center gap-2 ${showForm ? 'bg-slate-100 text-slate-600' : 'bg-slate-900 text-white shadow-lg shadow-slate-200'}`}
+            >
+              {showForm ? 'Cancel Request' : <><Send size={18} /> Apply for Leave</>}
+            </button>
           )}
         </div>
       </div>
 
-      {/* Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-              <h3 className="text-lg font-bold text-slate-800">New Request</h3>
-              <button onClick={() => setIsModalOpen(false)} className="p-1 rounded-full hover:bg-slate-200 transition-colors"><X size={20} className="text-slate-500" /></button>
+      {showForm && (
+        <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-100 animate-slideDown">
+          <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+            <FileText size={20} className="text-blue-500" /> New Leave Request
+          </h2>
+          <form onSubmit={handleApply} className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Leave Type</label>
+              <select
+                className="w-full border border-slate-200 rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-100"
+                value={formData.type}
+                onChange={e => setFormData({ ...formData, type: e.target.value })}
+              >
+                <option value="PAID">Paid Leave</option>
+                <option value="SICK">Sick Leave</option>
+                <option value="UNPAID">Unpaid Leave</option>
+              </select>
             </div>
-            <form onSubmit={handleCreate} className="p-6 space-y-5">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Time Off Type</label>
-                <select
-                  className="w-full border border-slate-300 rounded-lg px-3 py-2.5 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200 transition-all bg-white"
-                  value={formData.type}
-                  onChange={e => setFormData({ ...formData, type: e.target.value as LeaveType })}
-                >
-                  {Object.values(LeaveType).map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Start Date</label>
+              <input required type="date" className="w-full border border-slate-200 rounded-xl px-4 py-2.5 outline-none"
+                value={formData.startDate} onChange={e => setFormData({ ...formData, startDate: e.target.value })} />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-2">End Date</label>
+              <input required type="date" className="w-full border border-slate-200 rounded-xl px-4 py-2.5 outline-none"
+                value={formData.endDate} onChange={e => setFormData({ ...formData, endDate: e.target.value })} />
+            </div>
+            <div className="md:col-span-3">
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Reason</label>
+              <textarea required className="w-full border border-slate-200 rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-blue-100" rows={3}
+                value={formData.reason} onChange={e => setFormData({ ...formData, reason: e.target.value })} placeholder="Briefly describe the reason..." />
+            </div>
+            <div className="md:col-span-3">
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Attachment (Optional)</label>
+              <div className="flex items-center gap-4 p-4 border border-slate-200 border-dashed rounded-xl bg-slate-50">
+                <Paperclip size={20} className="text-slate-400" />
+                <input type="file" className="text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-slate-900 file:text-white hover:file:bg-slate-800"
+                  onChange={e => setAttachment(e.target.files?.[0] || null)} />
+                {attachment && <span className="text-xs text-slate-400 font-medium truncate max-w-[200px]">{attachment.name}</span>}
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">From</label>
-                  <input type="date" required className="w-full border border-slate-300 rounded-lg px-3 py-2.5 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200 transition-all"
-                    value={formData.startDate} onChange={e => setFormData({ ...formData, startDate: e.target.value })} />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">To</label>
-                  <input type="date" required className="w-full border border-slate-300 rounded-lg px-3 py-2.5 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200 transition-all"
-                    value={formData.endDate} onChange={e => setFormData({ ...formData, endDate: e.target.value })} />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Reason</label>
-                <textarea required className="w-full border border-slate-300 rounded-lg px-3 py-2.5 outline-none focus:border-slate-500 focus:ring-2 focus:ring-slate-200 transition-all resize-none" rows={3}
-                  value={formData.reason} onChange={e => setFormData({ ...formData, reason: e.target.value })} placeholder="e.g. Family vacation..."></textarea>
-              </div>
-              <div className="flex justify-end space-x-3 pt-4">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="px-5 py-2.5 text-slate-600 hover:bg-slate-100 rounded-lg font-medium transition-colors">Discard</button>
-                <button type="submit" className="px-6 py-2.5 bg-slate-900 text-white rounded-lg hover:bg-slate-800 font-medium shadow-lg shadow-slate-200 transition-colors">Submit Request</button>
-              </div>
-            </form>
-          </div>
+            </div>
+            <div className="md:col-span-3 flex justify-end">
+              <button type="submit" className="bg-blue-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-blue-100 hover:bg-blue-700 transition-all">
+                Submit Request
+              </button>
+            </div>
+          </form>
         </div>
       )}
+
+      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+        <table className="w-full text-left">
+          <thead className="bg-slate-50 border-b border-slate-200">
+            <tr>
+              <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Employee</th>
+              <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Type</th>
+              <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Dates</th>
+              <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest text-center">Status</th>
+              {currentUser?.role === Role.ADMIN && <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-widest">Actions & Feedback</th>}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {loading ? (
+              <tr><td colSpan={5} className="p-8 text-center text-slate-400">Loading records...</td></tr>
+            ) : leaves.length === 0 ? (
+              <tr><td colSpan={5} className="p-12 text-center text-slate-400 italic">No leave requests found.</td></tr>
+            ) : leaves.map(leave => (
+              <tr key={leave.id} className="hover:bg-slate-50/50 transition-colors">
+                <td className="px-6 py-5">
+                  <p className="font-bold text-slate-900">{(leave as any).user?.firstName} {(leave as any).user?.lastName}</p>
+                  <p className="text-xs text-slate-400">Reason: {leave.reason}</p>
+                </td>
+                <td className="px-6 py-5">
+                  <span className="text-xs font-bold text-slate-700 px-2 py-1 bg-slate-100 rounded-md">{leave.type}</span>
+                </td>
+                <td className="px-6 py-5">
+                  <div className="flex items-center gap-2 text-slate-600">
+                    <Calendar size={14} />
+                    <span className="text-sm font-medium">
+                      {format(new Date(leave.startDate), 'MMM dd')} - {format(new Date(leave.endDate), 'MMM dd, yyyy')}
+                    </span>
+                  </div>
+                </td>
+                <td className="px-6 py-5">
+                  <div className="flex flex-col items-center">
+                    <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase border ${getStatusStyle(leave.status)}`}>
+                      {leave.status}
+                    </span>
+                    <div className="flex flex-col items-center gap-1 mt-1">
+                      {leave.attachmentUrl && (
+                        <a href={leave.attachmentUrl} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-[10px] text-blue-600 font-bold hover:underline">
+                          <Paperclip size={10} /> View Doc
+                        </a>
+                      )}
+                      {leave.approverRemarks && (
+                        <div className="flex items-center gap-1 text-[10px] text-slate-400 italic">
+                          <MessageSquare size={10} /> {leave.approverRemarks}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </td>
+                {currentUser?.role === Role.ADMIN && (
+                  <td className="px-6 py-5">
+                    {leave.status === LeaveStatus.PENDING ? (
+                      leave.userId !== currentUser.id ? (
+                        <div className="space-y-3">
+                          <input
+                            className="w-full text-xs border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:border-slate-400"
+                            placeholder="Add a remark..."
+                            value={remarks[leave.id] || ''}
+                            onChange={e => setRemarks({ ...remarks, [leave.id]: e.target.value })}
+                          />
+                          <div className="flex gap-2">
+                            <button onClick={() => setModal({ isOpen: true, id: leave.id, status: LeaveStatus.APPROVED })} className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white p-2 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1">
+                              <CheckCircle size={14} /> Approve
+                            </button>
+                            <button onClick={() => setModal({ isOpen: true, id: leave.id, status: LeaveStatus.REJECTED })} className="flex-1 bg-red-500 hover:bg-red-600 text-white p-2 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-1">
+                              <XCircle size={14} /> Reject
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-400 italic font-medium">Awaiting approval from another Admin</span>
+                      )
+                    ) : (
+                      <span className="text-xs text-slate-400 font-medium">Processed on {leave.approvalDate ? format(new Date(leave.approvalDate), 'MMM dd') : '-'}</span>
+                    )}
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 };
