@@ -47,14 +47,24 @@ Based on the functional requirements:
 
 The application currently relies on `localStorage` and `setTimeout` to mimic a backend. To go to production, the backend architecture needs to be built.
 
-| Resource | Endpoints Required |
-|Os | --- |
-| **Auth** | `POST /auth/login` (JWT generation), `POST /auth/signup` |
-| **Users** | `GET /users`, `GET /users/:id`, `POST /users` (Onboarding) |
-| **Profiles**| `GET /profiles/:userId`, `PATCH /profiles/:userId` |
-| **Attendance** | `POST /attendance/check-in`, `POST /attendance/check-out`, `GET /attendance` |
-| **Leaves** | `GET /leaves`, `POST /leaves`, `PATCH /leaves/:id/status` |
-| **Salary** | `GET /salary/:userId`, `PUT /salary/:userId` |
+
+| Resource     | Endpoint                         | Method | Description |
+|--------------|----------------------------------|--------|-------------|
+| **Auth**     | `/auth/login`                    | POST   | Authenticate user and generate JWT |
+|              | `/auth/signup`                   | POST   | Register a new user |
+| **Users**    | `/users`                         | GET    | Fetch all users |
+|              | `/users/:id`                     | GET    | Fetch user by ID |
+|              | `/users`                         | POST   | User onboarding / create user |
+| **Profiles** | `/profiles/:userId`              | GET    | Get user profile details |
+|              | `/profiles/:userId`              | PATCH  | Update user profile |
+| **Attendance** | `/attendance/check-in`         | POST   | User check-in |
+|              | `/attendance/check-out`          | POST   | User check-out |
+|              | `/attendance`                    | GET    | View attendance records |
+| **Leaves**   | `/leaves`                        | GET    | Fetch leave requests |
+|              | `/leaves`                        | POST   | Create leave request |
+|              | `/leaves/:id/status`             | PATCH  | Approve or reject leave |
+| **Salary**   | `/salary/:userId`                | GET    | Get salary details |
+|              | `/salary/:userId`                | PUT    | Update salary details |
 
 #### 3. Pending Functional Requirements
 These features were outlined in the requirements but require real backend/storage integration:
